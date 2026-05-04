@@ -320,7 +320,7 @@ def _run_gui() -> None:
         from PyQt5.QtGui import (               # type: ignore
             QIcon, QPixmap, QPainter, QColor, QFont, QCursor, QTextCursor,
         )
-        from PyQt5.QtSvg import QSvgRenderer    # type: ignore
+
     except ImportError:
         sys.exit("PyQt5 is required.  Install with:  pip install PyQt5")
 
@@ -471,7 +471,7 @@ def _run_gui() -> None:
     )
 
     # ── App icon from assets/icon.svg ─────────────────────────────────────────
-    _ICON_PATH = str(Path(__file__).parent / "assets" / "icon.svg")
+    _ICON_PATH = str(Path(__file__).parent / "assets" / "old-icon.png")
 
     def _make_icon(running: bool) -> QIcon:
         size = 64
@@ -479,19 +479,27 @@ def _run_gui() -> None:
         px.fill(Qt.transparent)
         p = QPainter(px)
         p.setRenderHint(QPainter.Antialiasing)
-        if Path(_ICON_PATH).exists():
-            renderer = QSvgRenderer(_ICON_PATH)
-            renderer.render(p)
+        src = QPixmap(_ICON_PATH)
+        if not src.isNull():
+            scaled = src.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            x = (size - scaled.width()) // 2
+            y = (size - scaled.height()) // 2
+            p.drawPixmap(x, y, scaled)
         else:
             # Fallback: plain circle
-            p.setBrush(QColor("#2ecc71" if running else "#e74c3c"))
+            p.setBrush(QColor("#2980b9"))
             p.setPen(Qt.NoPen)
             p.drawEllipse(4, 4, size - 8, size - 8)
-        # Running state: green dot badge in bottom-right corner
+        # Running state: prominent green badge with white outline in bottom-right
         if running:
+            badge = 22
+            bx = size - badge - 2
+            by = size - badge - 2
             p.setPen(Qt.NoPen)
-            p.setBrush(QColor(46, 204, 113, 230))
-            p.drawEllipse(size - 18, size - 18, 14, 14)
+            p.setBrush(QColor(255, 255, 255, 230))   # white ring for contrast
+            p.drawEllipse(bx - 2, by - 2, badge + 4, badge + 4)
+            p.setBrush(QColor(39, 174, 96))           # solid green
+            p.drawEllipse(bx, by, badge, badge)
         p.end()
         return QIcon(px)
 
@@ -1218,6 +1226,8 @@ def _run_gui() -> None:
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     app.setApplicationName("FlashDash")
+    app.setDesktopFileName("flashdash")   # KDE/Wayland: links app to .desktop for icon
+    app.setWindowIcon(_make_icon(False))  # set at app level for Wayland compositors
     app.setStyle("Fusion")
     app.setStyleSheet(_APP_STYLE)
 
