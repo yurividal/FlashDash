@@ -2,7 +2,8 @@ Package: flashdash
 Version: VERSION_PLACEHOLDER
 Architecture: all
 Maintainer: FlashDash Contributors <noreply@github.com>
-Depends: python3 (>= 3.9), python3-pip, polkit | policykit-1
+Depends: python3 (>= 3.9), python3-pip
+Recommends: polkit | policykit-1
 Section: net
 Priority: optional
 Description: FlashDash FTP/TFTP Server
