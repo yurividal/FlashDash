@@ -1,0 +1,40 @@
+Name:           flashdash
+Version:        VERSION_PLACEHOLDER
+Release:        1%{?dist}
+Summary:        Simple FTP/TFTP server for network engineers
+License:        MIT
+URL:            https://github.com/REPO_PLACEHOLDER
+Source0:        flashdash-VERSION_PLACEHOLDER.tar.gz
+
+BuildArch:      noarch
+Requires:       python3 >= 3.9
+Requires:       python3-pip
+Requires:       polkit
+
+%description
+FlashDash is a lightweight FTP/TFTP server with a polished dark GUI,
+designed for network engineers who need fast file transfers without
+configuration overhead.
+
+%prep
+%autosetup
+
+%install
+install -Dm755 ftp_server_app.py %{buildroot}/usr/lib/flashdash/ftp_server_app.py
+install -Dm644 assets/icon.svg   %{buildroot}/usr/lib/flashdash/assets/icon.svg
+install -Dm644 assets/icon.svg   %{buildroot}/usr/share/icons/hicolor/scalable/apps/flashdash.svg
+install -Dm755 packaging/deb/flashdash.launcher %{buildroot}/usr/bin/flashdash
+install -Dm644 packaging/shared/flashdash.desktop %{buildroot}/usr/share/applications/flashdash.desktop
+
+%post
+pip3 install --quiet PyQt5 pyftpdlib tftpy 2>/dev/null || true
+
+%files
+%attr(0755, root, root) /usr/bin/flashdash
+/usr/lib/flashdash/
+/usr/share/applications/flashdash.desktop
+/usr/share/icons/hicolor/scalable/apps/flashdash.svg
+
+%changelog
+* Mon May 04 2026 FlashDash Contributors <noreply@github.com> - VERSION_PLACEHOLDER-1
+- Automated release

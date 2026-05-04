@@ -9,211 +9,88 @@ permissions:
   contents: write
 
 jobs:
-  # ── .deb (Debian / Ubuntu) ──────────────────────────────────────────────────
   build-deb:
     name: Build .deb package
     runs-on: ubuntu-22.04
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set version from tag
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
       - name: Install build tools
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y dpkg-dev fakeroot
 
-      - name: Stage application files
+      - name: Stage files
         run: |
-          STAGE=packaging/deb/flashdash
-          mkdir -p \
-            "$STAGE/DEBIAN" \
-            "$STAGE/usr/bin" \
-            "$STAGE/usr/lib/flashdash/assets" \
-            "$STAGE/usr/share/applications" \
-            "$STAGE/usr/share/icons/hicolor/scalable/apps"
-
-          cp ftp_server_app.py  "$STAGE/usr/lib/flashdash/"
-          cp requirements.txt   "$STAGE/usr/lib/flashdash/"
-          cp assets/icon.svg    "$STAGE/usr/lib/flashdash/assets/"
-          cp assets/icon.svg    "$STAGE/usr/share/icons/hicolor/scalable/apps/flashdash.svg"
-
-          cat > "$STAGE/usr/bin/flashdash" << 'LAUNCHER'
-#!/bin/bash
-exec python3 /usr/lib/flashdash/ftp_server_app.py "$@"
-LAUNCHER
+          VERSION="${GITHUB_REF_NAME#v}"
+          STAGE=packaging/deb/staging
+          mkdir -p "$STAGE/DEBIAN" "$STAGE/usr/bin" "$STAGE/usr/lib/flashdash/assets" "$STAGE/usr/share/applications" "$STAGE/usr/share/icons/hicolor/scalable/apps"
+          cp ftp_server_app.py "$STAGE/usr/lib/flashdash/"
+          cp requirements.txt "$STAGE/usr/lib/flashdash/"
+          cp assets/icon.svg "$STAGE/usr/lib/flashdash/assets/"
+          cp assets/icon.svg "$STAGE/usr/share/icons/hicolor/scalable/apps/flashdash.svg"
+          cp packaging/deb/flashdash.launcher "$STAGE/usr/bin/flashdash"
           chmod 0755 "$STAGE/usr/bin/flashdash"
-
-          cat > "$STAGE/usr/share/applications/flashdash.desktop" << 'DESKTOP'
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=FlashDash
-GenericName=FTP/TFTP Server
-Comment=Simple FTP/TFTP server for network engineers
-Exec=flashdash
-Icon=flashdash
-Terminal=false
-Categories=Network;FileTransfer;Internet;
-Keywords=ftp;tftp;server;file;transfer;network;
-StartupNotify=true
-DESKTOP
-
-      - name: Write DEBIAN/control
-        run: |
-          cat > packaging/deb/flashdash/DEBIAN/control << CONTROL
-          Package: flashdash
-          Version: $VERSION
-          Architecture: all
-          Maintainer: FlashDash Contributors <noreply@github.com>
-          Depends: python3 (>= 3.9), python3-pip, polkit | policykit-1
-          Section: net
-          Priority: optional
-          Description: FlashDash FTP/TFTP Server
-           A simple FTP and TFTP server with a polished GUI, built for network
-           engineers who need to transfer files fast without setup overhead.
-          CONTROL
-
-      - name: Write DEBIAN/postinst
-        run: |
-          cat > packaging/deb/flashdash/DEBIAN/postinst << 'POSTINST'
-#!/bin/bash
-set -e
-pip3 install --quiet --break-system-packages PyQt5 pyftpdlib tftpy 2>/dev/null \
-  || pip3 install --quiet PyQt5 pyftpdlib tftpy 2>/dev/null \
-  || true
-POSTINST
-          chmod 0755 packaging/deb/flashdash/DEBIAN/postinst
+          cp packaging/shared/flashdash.desktop "$STAGE/usr/share/applications/"
+          cp packaging/deb/DEBIAN/postinst "$STAGE/DEBIAN/postinst"
+          chmod 0755 "$STAGE/DEBIAN/postinst"
+          sed "s/VERSION_PLACEHOLDER/$VERSION/" packaging/deb/DEBIAN/control.template > "$STAGE/DEBIAN/control"
 
       - name: Build .deb
         run: |
-          fakeroot dpkg-deb --build packaging/deb/flashdash \
-            "flashdash_${VERSION}_all.deb"
-          echo "Built: $(ls -lh flashdash_*.deb)"
+          VERSION="${GITHUB_REF_NAME#v}"
+          fakeroot dpkg-deb --build packaging/deb/staging "flashdash_${VERSION}_all.deb"
+          ls -lh flashdash_*.deb
 
-      - name: Upload .deb artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: flashdash-deb
           path: "flashdash_*.deb"
           if-no-files-found: error
 
-  # ── .rpm (Fedora / RHEL / openSUSE) ────────────────────────────────────────
   build-rpm:
     name: Build .rpm package
     runs-on: ubuntu-22.04
     container: fedora:latest
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set version from tag
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
       - name: Install build tools
         run: dnf install -y rpm-build
 
-      - name: Set up rpmbuild tree
-        run: |
-          mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-          tar czf ~/rpmbuild/SOURCES/flashdash-${VERSION}.tar.gz \
-            --transform "s|^|flashdash-${VERSION}/|" \
-            ftp_server_app.py assets/icon.svg requirements.txt
-
-      - name: Write .spec file
-        run: |
-          cat > ~/rpmbuild/SPECS/flashdash.spec << SPEC
-          Name:           flashdash
-          Version:        ${VERSION}
-          Release:        1%{?dist}
-          Summary:        Simple FTP/TFTP server for network engineers
-          License:        MIT
-          URL:            https://github.com/$\{GITHUB_REPOSITORY\}
-          Source0:        flashdash-${VERSION}.tar.gz
-
-          BuildArch:      noarch
-          Requires:       python3 >= 3.9
-          Requires:       python3-pip
-          Requires:       polkit
-
-          %description
-          FlashDash is a lightweight FTP/TFTP server with a polished dark GUI,
-          designed for network engineers who need fast file transfers without
-          configuration overhead.
-
-          %prep
-          %autosetup
-
-          %install
-          install -Dm755 ftp_server_app.py %{buildroot}/usr/lib/flashdash/ftp_server_app.py
-          install -Dm644 assets/icon.svg   %{buildroot}/usr/lib/flashdash/assets/icon.svg
-          install -Dm644 assets/icon.svg   %{buildroot}/usr/share/icons/hicolor/scalable/apps/flashdash.svg
-
-          mkdir -p %{buildroot}/usr/bin
-          cat > %{buildroot}/usr/bin/flashdash << 'WRAPPER'
-          #!/bin/bash
-          exec python3 /usr/lib/flashdash/ftp_server_app.py "\$@"
-          WRAPPER
-          chmod 0755 %{buildroot}/usr/bin/flashdash
-
-          mkdir -p %{buildroot}/usr/share/applications
-          cat > %{buildroot}/usr/share/applications/flashdash.desktop << 'DESKTOP'
-          [Desktop Entry]
-          Version=1.0
-          Type=Application
-          Name=FlashDash
-          GenericName=FTP/TFTP Server
-          Comment=Simple FTP/TFTP server for network engineers
-          Exec=flashdash
-          Icon=flashdash
-          Terminal=false
-          Categories=Network;FileTransfer;Internet;
-          Keywords=ftp;tftp;server;file;transfer;network;
-          StartupNotify=true
-          DESKTOP
-
-          %post
-          pip3 install --quiet PyQt5 pyftpdlib tftpy 2>/dev/null || true
-
-          %files
-          %attr(0755, root, root) /usr/bin/flashdash
-          /usr/lib/flashdash/
-          /usr/share/applications/flashdash.desktop
-          /usr/share/icons/hicolor/scalable/apps/flashdash.svg
-          SPEC
-
       - name: Build .rpm
         run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+          tar czf ~/rpmbuild/SOURCES/flashdash-${VERSION}.tar.gz --transform "s|^|flashdash-${VERSION}/|" ftp_server_app.py assets/icon.svg requirements.txt packaging/deb/flashdash.launcher packaging/shared/flashdash.desktop
+          sed -e "s/VERSION_PLACEHOLDER/${VERSION}/g" -e "s|REPO_PLACEHOLDER|${GITHUB_REPOSITORY}|g" packaging/rpm/flashdash.spec.template > ~/rpmbuild/SPECS/flashdash.spec
           rpmbuild -bb ~/rpmbuild/SPECS/flashdash.spec
           find ~/rpmbuild/RPMS -name "*.rpm" -exec cp {} . \;
-          echo "Built: $(ls -lh *.rpm)"
+          ls -lh *.rpm
 
-      - name: Upload .rpm artifact
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: flashdash-rpm
           path: "*.rpm"
           if-no-files-found: error
 
-  # ── GitHub Release ──────────────────────────────────────────────────────────
   release:
     name: Create GitHub Release
     needs: [build-deb, build-rpm]
     runs-on: ubuntu-22.04
-
     steps:
-      - name: Download all artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: dist/
           merge-multiple: true
 
-      - name: List downloaded files
+      - name: List files
         run: find dist/ -type f
 
-      - name: Create release and upload packages
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/**

@@ -1,0 +1,10 @@
+Package: flashdash
+Version: VERSION_PLACEHOLDER
+Architecture: all
+Maintainer: FlashDash Contributors <noreply@github.com>
+Depends: python3 (>= 3.9), python3-pip, polkit | policykit-1
+Section: net
+Priority: optional
+Description: FlashDash FTP/TFTP Server
+ A simple FTP and TFTP server with a polished GUI, built for network
+ engineers who need to transfer files fast without setup overhead.

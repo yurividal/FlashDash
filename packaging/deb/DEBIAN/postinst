@@ -1,0 +1,5 @@
+#!/bin/bash
+set -e
+pip3 install --quiet --break-system-packages PyQt5 pyftpdlib tftpy 2>/dev/null \
+  || pip3 install --quiet PyQt5 pyftpdlib tftpy 2>/dev/null \
+  || true
