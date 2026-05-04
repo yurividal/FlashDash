@@ -1,4 +1,4 @@
-name: Build Linux Packages
+name: Build Packages
 
 on:
   push:
@@ -76,9 +76,46 @@ jobs:
           path: "*.rpm"
           if-no-files-found: error
 
+  build-exe:
+    name: Build Windows EXE
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install pyinstaller PyQt5 pyftpdlib tftpy Pillow
+
+      - name: Convert icon PNG to ICO
+        run: python packaging/win/convert_icon.py
+
+      - name: Build EXE
+        shell: pwsh
+        run: |
+          $VERSION = "${{ github.ref_name }}".TrimStart('v')
+          pyinstaller `
+            --onefile `
+            --windowed `
+            --icon=assets/flashdash.ico `
+            --name=FlashDash `
+            --add-data "assets;assets" `
+            ftp_server_app.py
+          Rename-Item dist\FlashDash.exe "FlashDash-${VERSION}-windows.exe"
+          Get-Item dist\*.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: "dist/FlashDash-*-windows.exe"
+          if-no-files-found: error
+
   release:
     name: Create GitHub Release
-    needs: [build-deb, build-rpm]
+    needs: [build-deb, build-rpm, build-exe]
     runs-on: ubuntu-22.04
     steps:
       - name: Download artifacts

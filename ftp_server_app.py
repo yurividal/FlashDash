@@ -34,9 +34,22 @@ _ARGS, _ = _ap.parse_known_args()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Resource path helper (survives PyInstaller --onefile bundling)
+# ─────────────────────────────────────────────────────────────────────────────
+def _resource_path(relative: str) -> str:
+    """Return absolute path to a bundled or source resource."""
+    if hasattr(sys, "_MEIPASS"):          # PyInstaller extracted bundle
+        return str(Path(sys._MEIPASS) / relative)
+    return str(Path(__file__).parent / relative)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Configuration
 # ─────────────────────────────────────────────────────────────────────────────
-_CONFIG_DIR  = Path.home() / ".config" / "flashdash"
+if sys.platform == "win32":
+    _CONFIG_DIR = Path(os.environ.get("APPDATA", Path.home())) / "FlashDash"
+else:
+    _CONFIG_DIR = Path.home() / ".config" / "flashdash"
 _CONFIG_FILE = _CONFIG_DIR / "config.json"
 
 _DEFAULTS: dict = {
@@ -212,30 +225,46 @@ def _make_tftp_server(cfg: dict, log_fn=None):
     return tftpy.TftpServer(cfg["root_folder"])
 
 
-def _get_all_ipv4s() -> list:
-    """Return all local IPv4 addresses (excludes loopback)."""
-    try:
-        out = subprocess.check_output(
-            ["hostname", "-I"], stderr=subprocess.DEVNULL
-        ).decode().split()
-        ips = [ip for ip in out if ":" not in ip and ip != "127.0.0.1"]
-        return ips if ips else ["127.0.0.1"]
-    except Exception:
-        # Fallback: single UDP-trick
+def _is_admin() -> bool:
+    """Return True if running with root/administrator privileges."""
+    if sys.platform == "win32":
         try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            ip = s.getsockname()[0]
-            s.close()
-            return [ip]
+            import ctypes
+            return bool(ctypes.windll.shell32.IsUserAnAdmin())
         except Exception:
-            return ["127.0.0.1"]
+            return False
+    return os.geteuid() == 0
+
+
+def _get_all_ipv4s() -> list:
+    """Return all local IPv4 addresses (excludes loopback). Cross-platform."""
+    try:
+        hostname = socket.gethostname()
+        infos = socket.getaddrinfo(hostname, None, socket.AF_INET)
+        ips = list(dict.fromkeys(
+            a[4][0] for a in infos if not a[4][0].startswith("127.")
+        ))
+        if ips:
+            return ips
+    except Exception:
+        pass
+    # Fallback: UDP-trick (works even when hostname doesn't resolve nicely)
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return [ip]
+    except Exception:
+        return ["127.0.0.1"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Daemon mode  (launched via pkexec for privileged ports < 1024)
+# Daemon mode  (Linux only — launched via pkexec for privileged ports < 1024)
 # ─────────────────────────────────────────────────────────────────────────────
 def _run_daemon() -> None:
+    if sys.platform == "win32":
+        sys.exit("Daemon mode is not supported on Windows.")
     import signal as _sig
 
     cfg       = _load_config(_ARGS.config)
@@ -470,8 +499,8 @@ def _run_gui() -> None:
         "QPushButton:disabled { background: #4a1a1a; color: #8a7a7a; }"
     )
 
-    # ── App icon from assets/icon.svg ─────────────────────────────────────────
-    _ICON_PATH = str(Path(__file__).parent / "assets" / "old-icon.png")
+    # ── App icon ──────────────────────────────────────────────────────────────
+    _ICON_PATH = _resource_path("assets/old-icon.png")
 
     def _make_icon(running: bool) -> QIcon:
         size = 64
@@ -525,8 +554,14 @@ def _run_gui() -> None:
         # ── Public API ────────────────────────────────────────────────
         def start(self, cfg: dict) -> None:
             self._protocol = cfg.get("protocol", "ftp")
-            privileged = int(cfg["port"]) < 1024 and os.geteuid() != 0
-            if privileged:
+            needs_priv = int(cfg["port"]) < 1024 and not _is_admin()
+            if needs_priv and sys.platform == "win32":
+                self.error.emit(
+                    f"Port {cfg['port']} may require administrator privileges on Windows.\n\n"
+                    "Right-click FlashDash and choose 'Run as administrator',\n"
+                    "or use a port \u2265 1024 (e.g. 2121)."
+                )
+            elif needs_priv:
                 self._start_privileged(cfg)
             else:
                 self._start_local(cfg)
@@ -1017,7 +1052,7 @@ def _run_gui() -> None:
             self._cfg = cfg
             self._set_inputs_enabled(False)
 
-            if int(cfg["port"]) < 1024 and os.geteuid() != 0:
+            if int(cfg["port"]) < 1024 and not _is_admin() and sys.platform != "win32":
                 self._on_log(
                     f"Port {cfg['port']} requires administrator privileges — "
                     "a system password prompt will appear."
@@ -1226,8 +1261,9 @@ def _run_gui() -> None:
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
     app.setApplicationName("FlashDash")
-    app.setDesktopFileName("flashdash")   # KDE/Wayland: links app to .desktop for icon
-    app.setWindowIcon(_make_icon(False))  # set at app level for Wayland compositors
+    if sys.platform != "win32":
+        app.setDesktopFileName("flashdash")   # KDE/Wayland: links app to .desktop for icon
+    app.setWindowIcon(_make_icon(False))  # set at app level for Wayland/Windows compositors
     app.setStyle("Fusion")
     app.setStyleSheet(_APP_STYLE)
 
