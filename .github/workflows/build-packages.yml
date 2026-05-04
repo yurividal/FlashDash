@@ -1,0 +1,218 @@
+name: Build Linux Packages
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  # ── .deb (Debian / Ubuntu) ──────────────────────────────────────────────────
+  build-deb:
+    name: Build .deb package
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y dpkg-dev fakeroot
+
+      - name: Install Python deps into staging area
+        run: |
+          pip3 install --target packaging/deb/flashdash/usr/lib/flashdash \
+            pyftpdlib tftpy PyQt5
+
+      - name: Stage application files
+        run: |
+          STAGE=packaging/deb/flashdash
+          mkdir -p \
+            "$STAGE/usr/bin" \
+            "$STAGE/usr/lib/flashdash/assets" \
+            "$STAGE/usr/share/applications" \
+            "$STAGE/usr/share/icons/hicolor/scalable/apps" \
+            "$STAGE/DEBIAN"
+
+          # App files
+          cp ftp_server_app.py "$STAGE/usr/lib/flashdash/"
+          cp assets/icon.svg   "$STAGE/usr/lib/flashdash/assets/"
+
+          # Launcher wrapper
+          cat > "$STAGE/usr/bin/flashdash" <<'EOF'
+          #!/bin/bash
+          exec python3 /usr/lib/flashdash/ftp_server_app.py "$@"
+          EOF
+          chmod +x "$STAGE/usr/bin/flashdash"
+
+          # Icon
+          cp assets/icon.svg \
+            "$STAGE/usr/share/icons/hicolor/scalable/apps/flashdash.svg"
+
+          # Desktop entry
+          cat > "$STAGE/usr/share/applications/flashdash.desktop" <<EOF
+          [Desktop Entry]
+          Version=1.0
+          Type=Application
+          Name=FlashDash
+          GenericName=FTP/TFTP Server
+          Comment=Simple FTP/TFTP server for network engineers
+          Exec=flashdash
+          Icon=flashdash
+          Terminal=false
+          Categories=Network;FileTransfer;Internet;
+          Keywords=ftp;tftp;server;file;transfer;network;
+          StartupNotify=true
+          EOF
+
+      - name: Write DEBIAN/control
+        run: |
+          cat > packaging/deb/flashdash/DEBIAN/control <<EOF
+          Package: flashdash
+          Version: ${{ env.VERSION }}
+          Architecture: all
+          Maintainer: FlashDash Contributors
+          Depends: python3 (>= 3.9), python3-pyqt5, python3-pyqt5.qtsvg, policykit-1
+          Recommends: python3-pyftpdlib
+          Section: net
+          Priority: optional
+          Description: FlashDash FTP/TFTP Server
+           A simple FTP and TFTP server with a polished GUI, built for network
+           engineers who need to transfer files fast without setup overhead.
+          EOF
+
+      - name: Build .deb
+        run: |
+          fakeroot dpkg-deb --build packaging/deb/flashdash \
+            flashdash_${{ env.VERSION }}_all.deb
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flashdash-deb
+          path: "*.deb"
+
+  # ── .rpm (Fedora / RHEL / openSUSE) ────────────────────────────────────────
+  build-rpm:
+    name: Build .rpm package
+    runs-on: ubuntu-22.04
+    container: fedora:latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+
+      - name: Install build tools
+        run: dnf install -y rpm-build python3-pip
+
+      - name: Set up rpmbuild tree
+        run: |
+          mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+          # Create source tarball
+          tar czf ~/rpmbuild/SOURCES/flashdash-${{ env.VERSION }}.tar.gz \
+            --transform "s|^|flashdash-${{ env.VERSION }}/|" \
+            ftp_server_app.py assets/icon.svg requirements.txt
+
+      - name: Write .spec file
+        run: |
+          cat > ~/rpmbuild/SPECS/flashdash.spec <<EOF
+          Name:           flashdash
+          Version:        ${{ env.VERSION }}
+          Release:        1%{?dist}
+          Summary:        Simple FTP/TFTP server for network engineers
+          License:        MIT
+          URL:            https://github.com/%{getenv:GITHUB_REPOSITORY}
+          Source0:        flashdash-%{version}.tar.gz
+
+          BuildArch:      noarch
+          Requires:       python3 >= 3.9
+          Requires:       python3-qt5
+          Requires:       python3-qt5-svg
+          Requires:       polkit
+
+          %description
+          FlashDash is a lightweight FTP/TFTP server with a polished dark GUI,
+          designed for network engineers who need fast file transfers without
+          configuration overhead.
+
+          %prep
+          %autosetup
+
+          %install
+          install -Dm755 ftp_server_app.py %{buildroot}/usr/lib/flashdash/ftp_server_app.py
+          install -Dm644 assets/icon.svg   %{buildroot}/usr/lib/flashdash/assets/icon.svg
+          install -Dm644 assets/icon.svg   %{buildroot}/usr/share/icons/hicolor/scalable/apps/flashdash.svg
+
+          mkdir -p %{buildroot}/usr/bin
+          cat > %{buildroot}/usr/bin/flashdash <<'WRAPPER'
+          #!/bin/bash
+          exec python3 /usr/lib/flashdash/ftp_server_app.py "\$@"
+          WRAPPER
+          chmod +x %{buildroot}/usr/bin/flashdash
+
+          mkdir -p %{buildroot}/usr/share/applications
+          cat > %{buildroot}/usr/share/applications/flashdash.desktop <<'DESKTOP'
+          [Desktop Entry]
+          Version=1.0
+          Type=Application
+          Name=FlashDash
+          GenericName=FTP/TFTP Server
+          Comment=Simple FTP/TFTP server for network engineers
+          Exec=flashdash
+          Icon=flashdash
+          Terminal=false
+          Categories=Network;FileTransfer;Internet;
+          Keywords=ftp;tftp;server;file;transfer;network;
+          StartupNotify=true
+          DESKTOP
+
+          %files
+          /usr/bin/flashdash
+          /usr/lib/flashdash/
+          /usr/share/applications/flashdash.desktop
+          /usr/share/icons/hicolor/scalable/apps/flashdash.svg
+
+          %changelog
+          * $(date "+%a %b %d %Y") FlashDash Contributors <noreply@github.com> - ${{ env.VERSION }}-1
+          - Release ${{ env.VERSION }}
+          EOF
+
+      - name: Build .rpm
+        run: rpmbuild -bb ~/rpmbuild/SPECS/flashdash.spec
+
+      - name: Collect .rpm
+        run: find ~/rpmbuild/RPMS -name "*.rpm" -exec cp {} . \;
+
+      - name: Upload .rpm artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flashdash-rpm
+          path: "*.rpm"
+
+  # ── GitHub Release ──────────────────────────────────────────────────────────
+  release:
+    name: Create GitHub Release
+    needs: [build-deb, build-rpm]
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: Create release and upload packages
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            *.deb
+            *.rpm
+          generate_release_notes: true

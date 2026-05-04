@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Config
+~/.config/flashdash/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Packaging artifacts
+*.deb
+*.rpm
+*.tar.gz
+*.whl
+packaging/deb/flashdash/
+packaging/rpm/rpmbuild/
