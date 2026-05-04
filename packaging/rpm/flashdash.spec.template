@@ -21,8 +21,8 @@ configuration overhead.
 
 %install
 install -Dm755 ftp_server_app.py %{buildroot}/usr/lib/flashdash/ftp_server_app.py
-install -Dm644 assets/icon.svg   %{buildroot}/usr/lib/flashdash/assets/icon.svg
-install -Dm644 assets/icon.svg   %{buildroot}/usr/share/icons/hicolor/scalable/apps/flashdash.svg
+install -Dm644 assets/old-icon.png %{buildroot}/usr/lib/flashdash/assets/old-icon.png
+install -Dm644 assets/old-icon.png %{buildroot}/usr/share/icons/hicolor/256x256/apps/flashdash.png
 install -Dm755 packaging/deb/flashdash.launcher %{buildroot}/usr/bin/flashdash
 install -Dm644 packaging/shared/flashdash.desktop %{buildroot}/usr/share/applications/flashdash.desktop
 
@@ -33,7 +33,7 @@ pip3 install --quiet PyQt5 pyftpdlib tftpy 2>/dev/null || true
 %attr(0755, root, root) /usr/bin/flashdash
 /usr/lib/flashdash/
 /usr/share/applications/flashdash.desktop
-/usr/share/icons/hicolor/scalable/apps/flashdash.svg
+/usr/share/icons/hicolor/256x256/apps/flashdash.png
 
 %changelog
 * Mon May 04 2026 FlashDash Contributors <noreply@github.com> - VERSION_PLACEHOLDER-1

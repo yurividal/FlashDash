@@ -24,11 +24,11 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           STAGE=packaging/deb/staging
-          mkdir -p "$STAGE/DEBIAN" "$STAGE/usr/bin" "$STAGE/usr/lib/flashdash/assets" "$STAGE/usr/share/applications" "$STAGE/usr/share/icons/hicolor/scalable/apps"
+          mkdir -p "$STAGE/DEBIAN" "$STAGE/usr/bin" "$STAGE/usr/lib/flashdash/assets" "$STAGE/usr/share/applications" "$STAGE/usr/share/icons/hicolor/256x256/apps"
           cp ftp_server_app.py "$STAGE/usr/lib/flashdash/"
           cp requirements.txt "$STAGE/usr/lib/flashdash/"
-          cp assets/icon.svg "$STAGE/usr/lib/flashdash/assets/"
-          cp assets/icon.svg "$STAGE/usr/share/icons/hicolor/scalable/apps/flashdash.svg"
+          cp assets/old-icon.png "$STAGE/usr/lib/flashdash/assets/"
+          cp assets/old-icon.png "$STAGE/usr/share/icons/hicolor/256x256/apps/flashdash.png"
           cp packaging/deb/flashdash.launcher "$STAGE/usr/bin/flashdash"
           chmod 0755 "$STAGE/usr/bin/flashdash"
           cp packaging/shared/flashdash.desktop "$STAGE/usr/share/applications/"
@@ -63,7 +63,7 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-          tar czf ~/rpmbuild/SOURCES/flashdash-${VERSION}.tar.gz --transform "s|^|flashdash-${VERSION}/|" ftp_server_app.py assets/icon.svg requirements.txt packaging/deb/flashdash.launcher packaging/shared/flashdash.desktop
+          tar czf ~/rpmbuild/SOURCES/flashdash-${VERSION}.tar.gz --transform "s|^|flashdash-${VERSION}/|" ftp_server_app.py assets/old-icon.png requirements.txt packaging/deb/flashdash.launcher packaging/shared/flashdash.desktop
           sed -e "s/VERSION_PLACEHOLDER/${VERSION}/g" -e "s|REPO_PLACEHOLDER|${GITHUB_REPOSITORY}|g" packaging/rpm/flashdash.spec.template > ~/rpmbuild/SPECS/flashdash.spec
           rpmbuild -bb ~/rpmbuild/SPECS/flashdash.spec
           find ~/rpmbuild/RPMS -name "*.rpm" -exec cp {} . \;
