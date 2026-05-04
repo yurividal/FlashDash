@@ -36,7 +36,11 @@ If you need a production-grade server with encryption, certificate management, a
 
 ## Installation
 
-### Quick install (Linux)
+### Download pre-built packages
+Pre-built `.deb` (Debian/Ubuntu) and `.rpm` (Fedora/RHEL) and Windows `.exe` installers are available on the [Releases](../../releases) page.
+
+
+### Quick install from source (Linux)
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/flashdash.git
