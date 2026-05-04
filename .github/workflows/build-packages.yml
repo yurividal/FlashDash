@@ -25,78 +25,80 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y dpkg-dev fakeroot
 
-      - name: Install Python deps into staging area
-        run: |
-          pip3 install --target packaging/deb/flashdash/usr/lib/flashdash \
-            pyftpdlib tftpy PyQt5
-
       - name: Stage application files
         run: |
           STAGE=packaging/deb/flashdash
           mkdir -p \
+            "$STAGE/DEBIAN" \
             "$STAGE/usr/bin" \
             "$STAGE/usr/lib/flashdash/assets" \
             "$STAGE/usr/share/applications" \
-            "$STAGE/usr/share/icons/hicolor/scalable/apps" \
-            "$STAGE/DEBIAN"
+            "$STAGE/usr/share/icons/hicolor/scalable/apps"
 
-          # App files
-          cp ftp_server_app.py "$STAGE/usr/lib/flashdash/"
-          cp assets/icon.svg   "$STAGE/usr/lib/flashdash/assets/"
+          cp ftp_server_app.py  "$STAGE/usr/lib/flashdash/"
+          cp requirements.txt   "$STAGE/usr/lib/flashdash/"
+          cp assets/icon.svg    "$STAGE/usr/lib/flashdash/assets/"
+          cp assets/icon.svg    "$STAGE/usr/share/icons/hicolor/scalable/apps/flashdash.svg"
 
-          # Launcher wrapper
-          cat > "$STAGE/usr/bin/flashdash" <<'EOF'
-          #!/bin/bash
-          exec python3 /usr/lib/flashdash/ftp_server_app.py "$@"
-          EOF
-          chmod +x "$STAGE/usr/bin/flashdash"
+          cat > "$STAGE/usr/bin/flashdash" << 'LAUNCHER'
+#!/bin/bash
+exec python3 /usr/lib/flashdash/ftp_server_app.py "$@"
+LAUNCHER
+          chmod 0755 "$STAGE/usr/bin/flashdash"
 
-          # Icon
-          cp assets/icon.svg \
-            "$STAGE/usr/share/icons/hicolor/scalable/apps/flashdash.svg"
-
-          # Desktop entry
-          cat > "$STAGE/usr/share/applications/flashdash.desktop" <<EOF
-          [Desktop Entry]
-          Version=1.0
-          Type=Application
-          Name=FlashDash
-          GenericName=FTP/TFTP Server
-          Comment=Simple FTP/TFTP server for network engineers
-          Exec=flashdash
-          Icon=flashdash
-          Terminal=false
-          Categories=Network;FileTransfer;Internet;
-          Keywords=ftp;tftp;server;file;transfer;network;
-          StartupNotify=true
-          EOF
+          cat > "$STAGE/usr/share/applications/flashdash.desktop" << 'DESKTOP'
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=FlashDash
+GenericName=FTP/TFTP Server
+Comment=Simple FTP/TFTP server for network engineers
+Exec=flashdash
+Icon=flashdash
+Terminal=false
+Categories=Network;FileTransfer;Internet;
+Keywords=ftp;tftp;server;file;transfer;network;
+StartupNotify=true
+DESKTOP
 
       - name: Write DEBIAN/control
         run: |
-          cat > packaging/deb/flashdash/DEBIAN/control <<EOF
+          cat > packaging/deb/flashdash/DEBIAN/control << CONTROL
           Package: flashdash
-          Version: ${{ env.VERSION }}
+          Version: $VERSION
           Architecture: all
-          Maintainer: FlashDash Contributors
-          Depends: python3 (>= 3.9), python3-pyqt5, python3-pyqt5.qtsvg, policykit-1
-          Recommends: python3-pyftpdlib
+          Maintainer: FlashDash Contributors <noreply@github.com>
+          Depends: python3 (>= 3.9), python3-pip, polkit | policykit-1
           Section: net
           Priority: optional
           Description: FlashDash FTP/TFTP Server
            A simple FTP and TFTP server with a polished GUI, built for network
            engineers who need to transfer files fast without setup overhead.
-          EOF
+          CONTROL
+
+      - name: Write DEBIAN/postinst
+        run: |
+          cat > packaging/deb/flashdash/DEBIAN/postinst << 'POSTINST'
+#!/bin/bash
+set -e
+pip3 install --quiet --break-system-packages PyQt5 pyftpdlib tftpy 2>/dev/null \
+  || pip3 install --quiet PyQt5 pyftpdlib tftpy 2>/dev/null \
+  || true
+POSTINST
+          chmod 0755 packaging/deb/flashdash/DEBIAN/postinst
 
       - name: Build .deb
         run: |
           fakeroot dpkg-deb --build packaging/deb/flashdash \
-            flashdash_${{ env.VERSION }}_all.deb
+            "flashdash_${VERSION}_all.deb"
+          echo "Built: $(ls -lh flashdash_*.deb)"
 
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v4
         with:
           name: flashdash-deb
-          path: "*.deb"
+          path: "flashdash_*.deb"
+          if-no-files-found: error
 
   # ── .rpm (Fedora / RHEL / openSUSE) ────────────────────────────────────────
   build-rpm:
@@ -111,31 +113,29 @@ jobs:
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
 
       - name: Install build tools
-        run: dnf install -y rpm-build python3-pip
+        run: dnf install -y rpm-build
 
       - name: Set up rpmbuild tree
         run: |
           mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-          # Create source tarball
-          tar czf ~/rpmbuild/SOURCES/flashdash-${{ env.VERSION }}.tar.gz \
-            --transform "s|^|flashdash-${{ env.VERSION }}/|" \
+          tar czf ~/rpmbuild/SOURCES/flashdash-${VERSION}.tar.gz \
+            --transform "s|^|flashdash-${VERSION}/|" \
             ftp_server_app.py assets/icon.svg requirements.txt
 
       - name: Write .spec file
         run: |
-          cat > ~/rpmbuild/SPECS/flashdash.spec <<EOF
+          cat > ~/rpmbuild/SPECS/flashdash.spec << SPEC
           Name:           flashdash
-          Version:        ${{ env.VERSION }}
+          Version:        ${VERSION}
           Release:        1%{?dist}
           Summary:        Simple FTP/TFTP server for network engineers
           License:        MIT
-          URL:            https://github.com/%{getenv:GITHUB_REPOSITORY}
-          Source0:        flashdash-%{version}.tar.gz
+          URL:            https://github.com/$\{GITHUB_REPOSITORY\}
+          Source0:        flashdash-${VERSION}.tar.gz
 
           BuildArch:      noarch
           Requires:       python3 >= 3.9
-          Requires:       python3-qt5
-          Requires:       python3-qt5-svg
+          Requires:       python3-pip
           Requires:       polkit
 
           %description
@@ -152,14 +152,14 @@ jobs:
           install -Dm644 assets/icon.svg   %{buildroot}/usr/share/icons/hicolor/scalable/apps/flashdash.svg
 
           mkdir -p %{buildroot}/usr/bin
-          cat > %{buildroot}/usr/bin/flashdash <<'WRAPPER'
+          cat > %{buildroot}/usr/bin/flashdash << 'WRAPPER'
           #!/bin/bash
           exec python3 /usr/lib/flashdash/ftp_server_app.py "\$@"
           WRAPPER
-          chmod +x %{buildroot}/usr/bin/flashdash
+          chmod 0755 %{buildroot}/usr/bin/flashdash
 
           mkdir -p %{buildroot}/usr/share/applications
-          cat > %{buildroot}/usr/share/applications/flashdash.desktop <<'DESKTOP'
+          cat > %{buildroot}/usr/share/applications/flashdash.desktop << 'DESKTOP'
           [Desktop Entry]
           Version=1.0
           Type=Application
@@ -174,28 +174,28 @@ jobs:
           StartupNotify=true
           DESKTOP
 
+          %post
+          pip3 install --quiet PyQt5 pyftpdlib tftpy 2>/dev/null || true
+
           %files
-          /usr/bin/flashdash
+          %attr(0755, root, root) /usr/bin/flashdash
           /usr/lib/flashdash/
           /usr/share/applications/flashdash.desktop
           /usr/share/icons/hicolor/scalable/apps/flashdash.svg
-
-          %changelog
-          * $(date "+%a %b %d %Y") FlashDash Contributors <noreply@github.com> - ${{ env.VERSION }}-1
-          - Release ${{ env.VERSION }}
-          EOF
+          SPEC
 
       - name: Build .rpm
-        run: rpmbuild -bb ~/rpmbuild/SPECS/flashdash.spec
-
-      - name: Collect .rpm
-        run: find ~/rpmbuild/RPMS -name "*.rpm" -exec cp {} . \;
+        run: |
+          rpmbuild -bb ~/rpmbuild/SPECS/flashdash.spec
+          find ~/rpmbuild/RPMS -name "*.rpm" -exec cp {} . \;
+          echo "Built: $(ls -lh *.rpm)"
 
       - name: Upload .rpm artifact
         uses: actions/upload-artifact@v4
         with:
           name: flashdash-rpm
           path: "*.rpm"
+          if-no-files-found: error
 
   # ── GitHub Release ──────────────────────────────────────────────────────────
   release:
@@ -204,15 +204,17 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Download artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
+          path: dist/
           merge-multiple: true
+
+      - name: List downloaded files
+        run: find dist/ -type f
 
       - name: Create release and upload packages
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            *.deb
-            *.rpm
+          files: dist/**
           generate_release_notes: true

@@ -8,7 +8,7 @@
 
 ## What is FlashDash?
 
-FlashDash is a lightweight desktop application for Linux (with Windows planned) that spins up an FTP or TFTP server in seconds. It is designed for **network engineers**, **sysadmins**, and **homelab enthusiasts** who regularly push firmware, configs, and OS images to routers, switches, and other network devices.
+FlashDash is a lightweight desktop application that spins up an FTP or TFTP server in seconds. It is designed for **network engineers**, **sysadmins**, and **homelab enthusiasts** who regularly push firmware, configs, and OS images to routers, switches, and other network devices.
 
 Pick a folder, pick a protocol, click **Start** — you're done.
 
@@ -84,15 +84,6 @@ python ftp_server_app.py
 Pre-built `.deb` (Debian/Ubuntu) and `.rpm` (Fedora/RHEL) packages are built automatically by GitHub Actions on every tagged release.
 
 Download them from the [Releases](../../releases) page.
-
----
-
-## Roadmap
-
-- [ ] Windows port (PyQt5 + WiX installer)
-- [ ] macOS port
-- [ ] SFTP mode
-- [ ] Per-session transfer statistics
 
 ---
 
